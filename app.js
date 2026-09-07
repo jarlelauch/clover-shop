@@ -40,7 +40,11 @@ function renderProducts(){
     grid.appendChild(el);
   });
 }
-function addToCart(id){const p=products.find(x=>x.id===id);const f=cart.find(c=>c.id===id);if(f)f.qty++;else cart.push({...p,qty:1});updateCartUI();toast(p.name+" ditambahkan");openCartDrawer();}
+function addToCart(id){
+  // anti spam: batasi klik terlalu cepat
+  if(window.__cloverAntiSpam) window.__cloverAntiSpam.markAddToCart();
+  const p=products.find(x=>x.id===id);const f=cart.find(c=>c.id===id);if(f)f.qty++;else cart.push({...p,qty:1});updateCartUI();toast(p.name+" ditambahkan");openCartDrawer();
+}
 function updateCartUI(){const c=cart.reduce((s,x)=>s+x.qty,0);document.getElementById("cartCount").textContent=c;document.getElementById("cartSub").textContent=c+" item";const items=document.getElementById("cartItems"), foot=document.getElementById("cartFooter"), empty=document.getElementById("cartEmpty");if(c===0){empty.style.display="block";foot.classList.add("hidden");[...items.querySelectorAll(".cart-row")].forEach(n=>n.remove());updateWishlistUI();return;}empty.style.display="none";foot.classList.remove("hidden");[...items.querySelectorAll(".cart-row")].forEach(n=>n.remove());cart.forEach(it=>{const r=document.createElement("div");r.className="cart-row border border-ink/10 bg-white p-3 flex gap-3";r.innerHTML=`<div class="w-14 h-14 border border-ink/10 bg-olive-50 flex items-center justify-center">${it.img}</div><div class="flex-1"><div class="font-serif text-sm">${it.name}</div><div class="font-mono text-[11px] text-ink/50">Rp ??? × ${it.qty}</div><div class="flex gap-2 mt-1"><button onclick="changeQty(${it.id},-1)" class="w-6 h-6 border border-ink/15">−</button><span class="font-mono text-xs w-5 text-center">${it.qty}</span><button onclick="changeQty(${it.id},1)" class="w-6 h-6 bg-ink text-paper">+</button></div></div><button onclick="removeFromCart(${it.id})" class="w-7 h-7 border border-ink/10">✕</button>`;items.appendChild(r);});document.getElementById("cartSubtotal").textContent="Rp ???";document.getElementById("cartTotal").textContent="Rp ???";updateWishlistUI();}
 function changeQty(id,d){const it=cart.find(c=>c.id===id);if(!it)return;it.qty+=d;if(it.qty<=0)cart=cart.filter(c=>c.id!==id);updateCartUI();}
 function removeFromCart(id){cart=cart.filter(c=>c.id!==id);updateCartUI();}
@@ -52,10 +56,19 @@ function openCartDrawer(){drawer.classList.remove("translate-x-full");overlay.cl
 function closeCartDrawer(){drawer.classList.add("translate-x-full");overlay.classList.add("hidden")}
 document.getElementById("cartBtn").addEventListener("click",openCartDrawer);document.getElementById("closeCart").addEventListener("click",closeCartDrawer);overlay.addEventListener("click",closeCartDrawer);
 document.getElementById("mobileMenuBtn").addEventListener("click",()=>document.getElementById("mobileMenu").classList.toggle("hidden"));
-function bindSearch(inp){if(!inp)return;inp.addEventListener("input",e=>{searchQ=e.target.value;renderProducts()})}
+function bindSearch(inp){if(!inp)return;inp.addEventListener("input",e=>{let v=e.target.value.replace(/[<>]/g,'').slice(0,40); e.target.value=v; searchQ=v;renderProducts()})}
 bindSearch(searchInput);bindSearch(searchInputMobile);
 sortSelect.addEventListener("change",renderProducts);
 document.querySelectorAll(".cat-btn").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".cat-btn").forEach(x=>{x.classList.remove("bg-ink","text-paper");x.classList.add("bg-paper")});b.classList.remove("bg-paper");b.classList.add("bg-ink","text-paper");activeCat=b.dataset.cat;renderProducts()}));
-document.getElementById("newsletterForm").addEventListener("submit",e=>{e.preventDefault();toast("Terdaftar — terima kasih");e.target.reset()});
+let lastSubscribe=0;
+document.getElementById("newsletterForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const now=Date.now();
+  if(now - lastSubscribe < 15000){ toast('Tunggu 15 detik sebelum daftar lagi'); return; }
+  lastSubscribe=now;
+  const email=e.target.querySelector('input[type=email]')?.value || '';
+  if(email.length>80 || email.includes('<') || email.includes('>')){ toast('Email tidak valid'); return; }
+  toast("Terdaftar — terima kasih"); e.target.reset();
+});
 document.getElementById("wishlistBtn").addEventListener("click",()=>toast(wishlist.size?`Wishlist ${wishlist.size}`:"Wishlist kosong"));
 renderProducts();updateCartUI();

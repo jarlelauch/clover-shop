@@ -304,7 +304,8 @@
     <div id="cartFooter" class="hidden border-t border-ink/10 p-4 bg-white">
       <div class="flex justify-between font-mono text-xs"><span>Subtotal</span><span id="cartSubtotal">Rp ???</span></div>
       <div class="flex justify-between font-mono text-xs font-semibold border-t border-ink/10 pt-2 mt-2"><span>Total</span><span id="cartTotal">Rp ???</span></div>
-      <button onclick="checkoutMidtransExample()" class="w-full mt-4 bg-ink text-paper py-3 font-mono text-xs tracking-[0.16em] uppercase">Bayar — Contoh Midtrans →</button>
+      <button id="checkoutBtn" onclick="checkoutMidtransExample()" class="w-full mt-4 bg-ink text-paper py-3 font-mono text-xs tracking-[0.16em] uppercase disabled:opacity-40 disabled:cursor-not-allowed">Bayar — Contoh Midtrans →</button>
+      <div class="mt-2 font-mono text-[9px] text-ink/40 text-center"><span id="cooldownInfo" class="hidden">Tunggu <b id="cooldownSec">10</b> detik sebelum coba lagi</span><span id="idemInfo" class="hidden"> • ID: <span id="idemId" class="font-mono text-[8px]"></span></span></div>
       <div class="mt-3 border border-ink/10 bg-paper p-3">
         <div class="font-mono text-[9px] tracking-[0.14em] uppercase text-ink/40">Contoh metode — Sandbox</div>
         <div class="flex gap-2 mt-2 font-mono text-[10px]">
@@ -315,43 +316,97 @@
         </div>
         <div class="font-mono text-[9px] text-ink/40 mt-2">Ini cuma contoh. Belum pakai kunci asli — perlu backend.</div>
       </div>
-      <button onclick="toast('Checkout nanti — fokus atelier dulu ☘️')" class="w-full mt-2 border border-ink bg-white py-2 font-mono text-[10px] tracking-widest uppercase">Simulasi lama</button>
     </div>
   </aside>
 
   <!-- Midtrans Snap - contoh sandbox, ganti dengan client key asli nanti -->
   <script src="https://app.sandbox.midtrans.com/snap/snap.js" data-client-key="SB-Mid-client-PLACEHOLDER-GANTI-NANTI"></script>
   <script>
+    // === Anti iseng: anti spam klik & anti lag ===
+    let isProcessing=false, lastCheckout=0, cooldownTimer=null, addToCartTimes=[];
+    const COOLDOWN_MS = 10000; // 10 detik sekali checkout biar gak spam
+    const RATE_MS = 1200; // batasi tambah keranjang terlalu cepat
+
+    function canCheckout(){
+      const now=Date.now();
+      if(isProcessing) { toast('Masih memproses — tunggu sebentar'); return false; }
+      if(now - lastCheckout < COOLDOWN_MS){
+        const sisa = Math.ceil((COOLDOWN_MS - (now - lastCheckout))/1000);
+        toast('Tunggu '+sisa+' detik sebelum checkout lagi — anti spam');
+        startCooldown(sisa);
+        return false;
+      }
+      // anti bot: kalau tambah keranjang 5x dalam 2 detik, anggap spam
+      const recent = addToCartTimes.filter(t=> now - t < 2000);
+      if(recent.length >= 5){ toast('Terlalu cepat — pelan-pelan ya'); return false; }
+      return true;
+    }
+    function startCooldown(sec){
+      const btn=document.getElementById('checkoutBtn'), info=document.getElementById('cooldownInfo'), secEl=document.getElementById('cooldownSec');
+      if(!btn) return;
+      btn.disabled=true; if(info) info.classList.remove('hidden');
+      let s=sec;
+      if(cooldownTimer) clearInterval(cooldownTimer);
+      cooldownTimer=setInterval(()=>{
+        s--; if(secEl) secEl.textContent=s;
+        if(s<=0){ clearInterval(cooldownTimer); btn.disabled=false; if(info) info.classList.add('hidden'); }
+      },1000);
+      setTimeout(()=>{ btn.disabled=false; if(info) info.classList.add('hidden'); clearInterval(cooldownTimer); }, sec*1000);
+    }
+    function makeIdemKey(){
+      const key='CLOVER-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6).toUpperCase();
+      try{ sessionStorage.setItem('clover_last_idem', key); }catch(e){}
+      const el=document.getElementById('idemId'), wrap=document.getElementById('idemInfo');
+      if(el) el.textContent=key; if(wrap) wrap.classList.remove('hidden');
+      return key;
+    }
+    // sanitasi input biar gak bisa selipin kode
+    function sanitize(str){ return str.replace(/[<>]/g,''); }
+    document.getElementById('searchInput')?.addEventListener('input', e=>{ e.target.value=sanitize(e.target.value).slice(0,40); });
+    document.getElementById('searchInputMobile')?.addEventListener('input', e=>{ e.target.value=sanitize(e.target.value).slice(0,40); });
+
     function checkoutMidtransExample(){
       const count = document.getElementById('cartCount')?.textContent || '0';
       if(count==='0'){ toast('Keranjang kosong — tambah produk dulu'); return; }
-      // Contoh: kalau sudah ada backend + snapToken, panggil: snap.pay(snapToken)
-      // Karena belum ada backend, kita simulasi popup Midtrans
-      if(window.snap && typeof snap.pay === 'function' && !document.querySelector('script[data-client-key*="PLACEHOLDER"]')){
-        // kalau sudah pakai kunci asli, backend akan kasih token
-        toast('Memanggil snap.pay(token) — butuh token dari backend');
-      } else {
-        // Simulasi UI Midtrans untuk demo
-        toast('Contoh Midtrans: akan buka popup GoPay / DANA / QRIS (sandbox)');
-        // bikin modal tiruan biar kebayang
-        const m = document.createElement('div');
-        m.className='fixed inset-0 z-[60] bg-ink/40 backdrop-blur-sm flex items-center justify-center p-6';
-        m.innerHTML=`<div class="bg-white border border-ink max-w-[380px] w-full p-6">
-          <div class="font-mono text-[10px] tracking-[0.18em] uppercase text-ink/40">Midtrans Snap — Contoh</div>
-          <div class="font-serif text-xl mt-2">Pilih metode</div>
-          <div class="grid grid-cols-2 gap-2 mt-4 font-mono text-xs">
-            <button onclick="toast('GoPay — contoh'); this.closest('.fixed').remove()" class="border border-ink bg-white py-3 hover:bg-paper">GoPay</button>
-            <button onclick="toast('DANA — contoh'); this.closest('.fixed').remove()" class="border border-ink bg-white py-3 hover:bg-paper">DANA</button>
-            <button onclick="toast('QRIS — contoh'); this.closest('.fixed').remove()" class="border border-ink bg-white py-3 hover:bg-paper">QRIS</button>
-            <button onclick="toast('VA BCA — contoh'); this.closest('.fixed').remove()" class="border border-ink bg-white py-3 hover:bg-paper">VA BCA</button>
-          </div>
-          <div class="font-mono text-[9px] text-ink/40 mt-4">Butuh backend untuk transaksi beneran. Token dari server → snap.pay(token).</div>
-          <button onclick="this.closest('.fixed').remove()" class="mt-4 w-full bg-ink text-paper py-2 font-mono text-[11px] tracking-widest uppercase">Tutup</button>
-        </div>`;
-        m.onclick=(e)=>{ if(e.target===m) m.remove(); };
-        document.body.appendChild(m);
-      }
+      if(!canCheckout()) return;
+      isProcessing=true;
+      const btn=document.getElementById('checkoutBtn');
+      const oldText=btn?btn.textContent:'';
+      if(btn){ btn.disabled=true; btn.textContent='Memproses...'; }
+      const idem = makeIdemKey();
+      lastCheckout=Date.now();
+      // simulasi panggil backend (butuh 1.2 detik) — anti double klik
+      setTimeout(()=>{
+        isProcessing=false;
+        if(btn){ btn.textContent=oldText; }
+        startCooldown(10);
+        // Contoh: kalau sudah ada backend + snapToken, panggil: snap.pay(snapToken)
+        if(window.snap && typeof snap.pay === 'function' && !document.querySelector('script[data-client-key*="PLACEHOLDER"]')){
+          toast('Memanggil snap.pay('+idem+') — butuh token dari backend');
+        } else {
+          toast('Contoh Midtrans: buka popup GoPay / DANA (ID: '+idem+')');
+          const m = document.createElement('div');
+          m.className='fixed inset-0 z-[60] bg-ink/40 backdrop-blur-sm flex items-center justify-center p-6';
+          m.innerHTML=`<div class="bg-white border border-ink max-w-[380px] w-full p-6">
+            <div class="font-mono text-[10px] tracking-[0.18em] uppercase text-ink/40">Midtrans Snap — Contoh • ${idem}</div>
+            <div class="font-serif text-xl mt-2">Pilih metode</div>
+            <div class="font-mono text-[10px] text-ink/50">ID ini bikin klik dobel dianggap 1 pesanan yang sama (anti lag)</div>
+            <div class="grid grid-cols-2 gap-2 mt-4 font-mono text-xs">
+              <button onclick="toast('GoPay — lunas (contoh)'); this.closest('.fixed').remove()" class="border border-ink bg-white py-3 hover:bg-paper">GoPay</button>
+              <button onclick="toast('DANA — lunas (contoh)'); this.closest('.fixed').remove()" class="border border-ink bg-white py-3 hover:bg-paper">DANA</button>
+              <button onclick="toast('QRIS — lunas (contoh)'); this.closest('.fixed').remove()" class="border border-ink bg-white py-3 hover:bg-paper">QRIS</button>
+              <button onclick="toast('VA BCA — lunas (contoh)'); this.closest('.fixed').remove()" class="border border-ink bg-white py-3 hover:bg-paper">VA BCA</button>
+            </div>
+            <div class="font-mono text-[9px] text-ink/40 mt-4">Backend nanti akan cek ID ini biar pesanan gak kecatat dobel kalau orang klik 10x.</div>
+            <button onclick="this.closest('.fixed').remove()" class="mt-4 w-full bg-ink text-paper py-2 font-mono text-[11px] tracking-widest uppercase">Tutup</button>
+          </div>`;
+          m.onclick=(e)=>{ if(e.target===m) m.remove(); };
+          document.body.appendChild(m);
+        }
+      }, 900);
     }
+    // expose buat app.js
+    window.__cloverAntiSpam = { markAddToCart: ()=> addToCartTimes.push(Date.now()) };
   </script>
   <div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-ink text-paper font-mono text-xs tracking-widest px-4 py-3 hidden z-50">Berhasil</div>
   <script src="./app.js"></script>
